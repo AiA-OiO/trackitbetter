@@ -1,26 +1,9 @@
-import React, { useState } from "react";
+import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import {
-  format,
-  eachDayOfInterval,
-  startOfMonth,
-  endOfMonth,
-  isSameDay,
-  addMonths,
-  subMonths,
-  differenceInDays,
-  isToday,
-} from "date-fns";
-import { Button } from "@/components/ui/button";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Flame,
-  Target,
-  TrendingUp,
-} from "lucide-react";
+import { format, isSameDay, differenceInDays, isToday } from "date-fns";
+import { Flame, Target, TrendingUp } from "lucide-react";
 
 interface ChainViewProps {
   completedDates?: Date[];
@@ -29,6 +12,7 @@ interface ChainViewProps {
   currentStreak?: number;
   longestStreak?: number;
   habitTitle?: string;
+  dateRange?: { start: Date; end: Date };
 }
 
 const ChainView = ({
@@ -38,9 +22,11 @@ const ChainView = ({
   currentStreak = 0,
   longestStreak = 0,
   habitTitle = "Habit Progress",
+  dateRange = {
+    start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+    end: new Date(),
+  },
 }: ChainViewProps) => {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-
   // Chain color styles with gradients and glow effects
   const chainColorStyles = {
     bronze: {
@@ -73,15 +59,18 @@ const ChainView = ({
     },
   };
 
-  // Navigate to previous month
-  const prevMonth = () => {
-    setCurrentMonth(subMonths(currentMonth, 1));
+  // Generate date range for display
+  const generateDateRange = () => {
+    const dates = [];
+    const currentDate = new Date(dateRange.start);
+    while (currentDate <= dateRange.end) {
+      dates.push(new Date(currentDate));
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    return dates;
   };
 
-  // Navigate to next month
-  const nextMonth = () => {
-    setCurrentMonth(addMonths(currentMonth, 1));
-  };
+  const allDates = generateDateRange();
 
   // Check if a date is completed
   const isDateCompleted = (date: Date) => {
@@ -94,17 +83,32 @@ const ChainView = ({
     );
   };
 
-  // Get all days in the current month
-  const daysInMonth = eachDayOfInterval({
-    start: startOfMonth(currentMonth),
-    end: endOfMonth(currentMonth),
-  });
-
   // Calculate progress metrics
-  const completedThisMonth = daysInMonth.filter((day) =>
+  const completedInRange = allDates.filter((day) =>
     isDateCompleted(day),
   ).length;
-  const progressPercentage = (completedThisMonth / daysInMonth.length) * 100;
+  const progressPercentage = (completedInRange / allDates.length) * 100;
+
+  // Create zig-zag rows with alternating 4 and 3 days
+  const createZigZagRows = () => {
+    const rows = [];
+    let currentIndex = 0;
+    let isEvenRow = true;
+
+    while (currentIndex < allDates.length) {
+      const daysInRow = isEvenRow ? 4 : 3;
+      const rowDates = allDates.slice(currentIndex, currentIndex + daysInRow);
+      if (rowDates.length > 0) {
+        rows.push({ dates: rowDates, isEvenRow });
+      }
+      currentIndex += daysInRow;
+      isEvenRow = !isEvenRow;
+    }
+
+    return rows;
+  };
+
+  const zigZagRows = createZigZagRows();
 
   // Calculate consecutive streaks in current month
   const getStreakInfo = () => {
@@ -149,29 +153,12 @@ const ChainView = ({
   return (
     <Card className="w-full bg-white shadow-lg border-0">
       <CardHeader className="pb-4">
-        <div className="flex justify-between items-center mb-4">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={prevMonth}
-            className="hover:bg-gray-50"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <div className="text-center">
-            <CardTitle className="text-xl font-bold">
-              {format(currentMonth, "MMMM yyyy")}
-            </CardTitle>
-            <p className="text-sm text-gray-500 mt-1">{habitTitle}</p>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={nextMonth}
-            className="hover:bg-gray-50"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+        <div className="text-center mb-4">
+          <CardTitle className="text-xl font-bold">{habitTitle}</CardTitle>
+          <p className="text-sm text-gray-500 mt-1">
+            {format(dateRange.start, "MMM d")} -{" "}
+            {format(dateRange.end, "MMM d, yyyy")}
+          </p>
         </div>
 
         {/* Progress Stats */}
@@ -194,7 +181,7 @@ const ChainView = ({
               </span>
             </div>
             <div className="text-2xl font-bold text-gray-900">
-              {completedThisMonth}
+              {completedInRange}
             </div>
             <div className="text-xs text-gray-500">completed</div>
           </div>
@@ -213,9 +200,7 @@ const ChainView = ({
         {/* Progress Bar */}
         <div className="mb-4">
           <div className="flex justify-between items-center mb-2">
-            <span className="text-sm font-medium text-gray-600">
-              Monthly Progress
-            </span>
+            <span className="text-sm font-medium text-gray-600">Progress</span>
             <Badge
               variant="outline"
               className={`${chainColorStyles[chainColor].border} ${chainColorStyles[chainColor].text}`}
@@ -227,98 +212,123 @@ const ChainView = ({
         </div>
       </CardHeader>
       <CardContent className="pt-0">
-        <div className="space-y-1">
-          {daysInMonth.map((day, index) => {
-            const isCompleted = isDateCompleted(day);
-            const isPrevDayCompleted =
-              index > 0 && isDateCompleted(daysInMonth[index - 1]);
-            const isNextDayCompleted =
-              index < daysInMonth.length - 1 &&
-              isDateCompleted(daysInMonth[index + 1]);
-            const isTodayDate = isToday(day);
-
+        <div className="space-y-6">
+          {zigZagRows.map((row, rowIndex) => {
+            const isEvenRow = row.isEvenRow;
             return (
-              <div
-                key={day.toISOString()}
-                className={`relative w-full h-14 flex items-center rounded-lg transition-all duration-200 hover:bg-gray-50 ${
-                  isTodayDate
-                    ? "bg-blue-50 border border-blue-200"
-                    : "border border-transparent"
-                }`}
-              >
-                <div className="w-12 text-center">
-                  <div
-                    className={`text-lg font-bold ${
-                      isTodayDate
-                        ? "text-blue-600"
-                        : isCompleted
-                          ? "text-gray-900"
-                          : "text-gray-400"
-                    }`}
-                  >
-                    {format(day, "d")}
+              <div key={rowIndex} className="relative">
+                <div
+                  className={`flex items-center justify-center gap-4 ${
+                    isEvenRow ? "" : "ml-16"
+                  }`}
+                >
+                  {row.dates.map((date, dateIndex) => {
+                    const isCompleted = isDateCompleted(date);
+                    const isTodayDate = isToday(date);
+                    const globalIndex =
+                      zigZagRows
+                        .slice(0, rowIndex)
+                        .reduce((acc, r) => acc + r.dates.length, 0) +
+                      dateIndex;
+                    const prevDate =
+                      globalIndex > 0 ? allDates[globalIndex - 1] : null;
+                    const nextDate =
+                      globalIndex < allDates.length - 1
+                        ? allDates[globalIndex + 1]
+                        : null;
+                    const isPrevCompleted = prevDate
+                      ? isDateCompleted(prevDate)
+                      : false;
+                    const isNextCompleted = nextDate
+                      ? isDateCompleted(nextDate)
+                      : false;
+
+                    return (
+                      <div
+                        key={date.toISOString()}
+                        className="relative flex flex-col items-center"
+                      >
+                        {/* Date display */}
+                        <div className="text-center mb-2">
+                          <div
+                            className={`text-sm font-bold ${
+                              isTodayDate
+                                ? "text-blue-600"
+                                : isCompleted
+                                  ? "text-gray-900"
+                                  : "text-gray-400"
+                            }`}
+                          >
+                            {format(date, "d")}
+                          </div>
+                          <div className="text-xs text-gray-400">
+                            {format(date, "MMM")}
+                          </div>
+                        </div>
+
+                        {/* Chain node */}
+                        <div className="relative">
+                          {isCompleted ? (
+                            <div
+                              className={`w-8 h-8 rounded-full ${chainColorStyles[chainColor].bg} ${chainColorStyles[chainColor].glow} cursor-pointer transform hover:scale-110 transition-transform duration-200 flex items-center justify-center`}
+                              onClick={() => handleDateClick(date)}
+                            >
+                              <div className="w-3 h-3 bg-white rounded-full opacity-80"></div>
+                            </div>
+                          ) : (
+                            <div
+                              className={`w-6 h-6 rounded-full border-2 ${
+                                isTodayDate
+                                  ? "border-blue-400 bg-blue-50"
+                                  : "border-gray-300 bg-white"
+                              } cursor-pointer hover:bg-gray-50 transition-colors duration-200`}
+                              onClick={() => handleDateClick(date)}
+                            ></div>
+                          )}
+                        </div>
+
+                        {/* Status badge */}
+                        <div className="mt-2">
+                          {isCompleted && (
+                            <Badge
+                              variant="outline"
+                              className={`text-xs ${chainColorStyles[chainColor].border} ${chainColorStyles[chainColor].text}`}
+                            >
+                              ✓
+                            </Badge>
+                          )}
+                          {isTodayDate && !isCompleted && (
+                            <Badge
+                              variant="outline"
+                              className="text-xs border-blue-400 text-blue-600"
+                            >
+                              Today
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Connecting lines for zig-zag pattern */}
+                {rowIndex < zigZagRows.length - 1 && (
+                  <div className="absolute top-16 left-1/2 transform -translate-x-1/2">
+                    <svg width="200" height="40" className="overflow-visible">
+                      <path
+                        d={
+                          isEvenRow
+                            ? "M 0 0 Q 100 20 200 0"
+                            : "M 200 0 Q 100 20 0 0"
+                        }
+                        stroke="#e5e7eb"
+                        strokeWidth="2"
+                        fill="none"
+                        className="transition-colors duration-200"
+                      />
+                    </svg>
                   </div>
-                  <div className="text-xs text-gray-400">
-                    {format(day, "EEE")}
-                  </div>
-                </div>
-
-                <div className="flex-1 h-8 relative flex items-center mx-4">
-                  {/* Base chain line */}
-                  <div className="absolute left-0 right-0 h-2 bg-gray-200 rounded-full"></div>
-
-                  {/* Completed day marker with enhanced styling */}
-                  {isCompleted && (
-                    <div
-                      className={`absolute w-8 h-8 rounded-full ${chainColorStyles[chainColor].bg} ${chainColorStyles[chainColor].glow} z-20 cursor-pointer transform hover:scale-110 transition-transform duration-200 flex items-center justify-center`}
-                      style={{ left: "calc(50% - 16px)" }}
-                      onClick={() => handleDateClick(day)}
-                    >
-                      <div className="w-3 h-3 bg-white rounded-full opacity-80"></div>
-                    </div>
-                  )}
-
-                  {/* Enhanced connectors */}
-                  {isCompleted && isPrevDayCompleted && (
-                    <div
-                      className={`absolute left-0 w-1/2 h-2 ${chainColorStyles[chainColor].bg} rounded-l-full z-10`}
-                    ></div>
-                  )}
-
-                  {isCompleted && isNextDayCompleted && (
-                    <div
-                      className={`absolute left-1/2 w-1/2 h-2 ${chainColorStyles[chainColor].bg} rounded-r-full z-10`}
-                    ></div>
-                  )}
-
-                  {/* Today indicator */}
-                  {isTodayDate && !isCompleted && (
-                    <div
-                      className="absolute w-6 h-6 rounded-full border-2 border-blue-400 bg-white z-20 cursor-pointer hover:bg-blue-50 transition-colors duration-200"
-                      style={{ left: "calc(50% - 12px)" }}
-                      onClick={() => handleDateClick(day)}
-                    ></div>
-                  )}
-                </div>
-
-                <div className="w-16 text-right pr-2">
-                  {isCompleted && (
-                    <Badge
-                      variant="outline"
-                      className={`text-xs ${chainColorStyles[chainColor].border} ${chainColorStyles[chainColor].text}`}
-                    >
-                      ✓
-                    </Badge>
-                  )}
-                  {isTodayDate && !isCompleted && (
-                    <Badge
-                      variant="outline"
-                      className="text-xs border-blue-400 text-blue-600"
-                    >
-                      Today
-                    </Badge>
-                  )}
-                </div>
+                )}
               </div>
             );
           })}
